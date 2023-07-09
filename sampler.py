@@ -384,6 +384,28 @@ class SAINTRandomWalkSampler(SAINTSampler):
         return graph_fn, norm_fn
 
     def __sample__(self):
+        # GraphSAINT-NRW Probability Calculation
+        # if self.prob is None:
+        #     self.prob = self.train_g.in_degrees().float().clamp(min=1)
+
+        # GraphSAINT-ERW Probability Calculation
+        # if self.prob is None:
+        #     src, dst = self.train_g.edges()
+        #     src_degrees, dst_degrees = self.train_g.in_degrees(
+        #         src
+        #     ).float().clamp(min=1), self.train_g.in_degrees(dst).float().clamp(
+        #         min=1
+        #     )
+        #     prob_mat = 1.0 / src_degrees + 1.0 / dst_degrees
+        #     prob_mat = scipy.sparse.csr_matrix(
+        #         (prob_mat.numpy(), (src.numpy(), dst.numpy()))
+        #     )
+        #     # The edge probability here only contains that of edges in upper triangle adjacency matrix
+        #     # Because we assume the graph is undirected, that is, the adjacency matrix is symmetric. We only need
+        #     # to consider half of edges in the graph.
+        #     self.prob = th.tensor(scipy.sparse.triu(prob_mat).data)
+        #     self.prob /= self.prob.sum()
+
         sampled_roots = th.randint(
             0, self.train_g.num_nodes(), (self.num_roots,)
         )
