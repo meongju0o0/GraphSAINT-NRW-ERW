@@ -99,58 +99,49 @@ class SAINTSampler:
         assert (
             self.num_subg_sampler >= self.batch_size_sampler
         ), "num_subg_sampler should be greater than batch_size_sampler"
-        graph_fn, norm_fn = self.__generate_fn__()
 
-        if os.path.exists(graph_fn):
-            self.subgraphs = np.load(graph_fn, allow_pickle=True)
-            aggr_norm, loss_norm = np.load(norm_fn, allow_pickle=True)
-        else:
-            os.makedirs("./subgraphs/", exist_ok=True)
+        self.subgraphs = []
+        self.N, sampled_nodes = 0, 0
+        # N: the number of pre-sampled subgraphs
 
-            self.subgraphs = []
-            self.N, sampled_nodes = 0, 0
-            # N: the number of pre-sampled subgraphs
+        # Employ parallelism to speed up the sampling procedure
+        loader = DataLoader(
+            self,
+            batch_size=self.batch_size_sampler,
+            shuffle=True,
+            num_workers=self.num_workers_sampler,
+            collate_fn=self.__collate_fn__,
+            drop_last=False,
+        )
 
-            # Employ parallelism to speed up the sampling procedure
-            loader = DataLoader(
-                self,
-                batch_size=self.batch_size_sampler,
-                shuffle=True,
-                num_workers=self.num_workers_sampler,
-                collate_fn=self.__collate_fn__,
-                drop_last=False,
+        t = time.perf_counter()
+        for num_nodes, subgraphs_nids, subgraphs_eids in loader:
+            self.subgraphs.extend(subgraphs_nids)
+            sampled_nodes += num_nodes
+
+            _subgraphs, _node_counts = np.unique(
+                np.concatenate(subgraphs_nids), return_counts=True
             )
+            sampled_nodes_idx = th.from_numpy(_subgraphs)
+            _node_counts = th.from_numpy(_node_counts)
+            self.node_counter[sampled_nodes_idx] += _node_counts
 
-            t = time.perf_counter()
-            for num_nodes, subgraphs_nids, subgraphs_eids in loader:
-                self.subgraphs.extend(subgraphs_nids)
-                sampled_nodes += num_nodes
+            _subgraphs_eids, _edge_counts = np.unique(
+                np.concatenate(subgraphs_eids), return_counts=True
+            )
+            sampled_edges_idx = th.from_numpy(_subgraphs_eids)
+            _edge_counts = th.from_numpy(_edge_counts)
+            self.edge_counter[sampled_edges_idx] += _edge_counts
 
-                _subgraphs, _node_counts = np.unique(
-                    np.concatenate(subgraphs_nids), return_counts=True
-                )
-                sampled_nodes_idx = th.from_numpy(_subgraphs)
-                _node_counts = th.from_numpy(_node_counts)
-                self.node_counter[sampled_nodes_idx] += _node_counts
+            self.N += len(subgraphs_nids)  # number of subgraphs
+            if sampled_nodes > self.train_g.num_nodes() * num_subg:
+                break
 
-                _subgraphs_eids, _edge_counts = np.unique(
-                    np.concatenate(subgraphs_eids), return_counts=True
-                )
-                sampled_edges_idx = th.from_numpy(_subgraphs_eids)
-                _edge_counts = th.from_numpy(_edge_counts)
-                self.edge_counter[sampled_edges_idx] += _edge_counts
+        print(f"Sampling time: [{time.perf_counter() - t:.2f}s]")
 
-                self.N += len(subgraphs_nids)  # number of subgraphs
-                if sampled_nodes > self.train_g.num_nodes() * num_subg:
-                    break
-
-            print(f"Sampling time: [{time.perf_counter() - t:.2f}s]")
-            np.save(graph_fn, self.subgraphs)
-
-            t = time.perf_counter()
-            aggr_norm, loss_norm = self.__compute_norm__()
-            print(f"Normalization time: [{time.perf_counter() - t:.2f}s]")
-            np.save(norm_fn, (aggr_norm, loss_norm))
+        t = time.perf_counter()
+        aggr_norm, loss_norm = self.__compute_norm__()
+        print(f"Normalization time: [{time.perf_counter() - t:.2f}s]")
 
         self.train_g.ndata["l_n"] = th.Tensor(loss_norm)
         self.train_g.edata["w"] = th.Tensor(aggr_norm)
@@ -258,19 +249,6 @@ class SAINTNodeSampler(SAINTSampler):
             node_budget=node_budget, **kwargs
         )
 
-    def __generate_fn__(self):
-        graph_fn = os.path.join(
-            "./subgraphs/{}_Node_{}_{}.npy".format(
-                self.dn, self.node_budget, self.num_subg
-            )
-        )
-        norm_fn = os.path.join(
-            "./subgraphs/{}_Node_{}_{}_norm.npy".format(
-                self.dn, self.node_budget, self.num_subg
-            )
-        )
-        return graph_fn, norm_fn
-
     def __sample__(self):
         if self.prob is None:
             self.prob = self.train_g.in_degrees().float().clamp(min=1)
@@ -300,19 +278,6 @@ class SAINTEdgeSampler(SAINTSampler):
         super(SAINTEdgeSampler, self).__init__(
             node_budget=edge_budget * 2, **kwargs
         )
-
-    def __generate_fn__(self):
-        graph_fn = os.path.join(
-            "./subgraphs/{}_Edge_{}_{}.npy".format(
-                self.dn, self.edge_budget, self.num_subg
-            )
-        )
-        norm_fn = os.path.join(
-            "./subgraphs/{}_Edge_{}_{}_norm.npy".format(
-                self.dn, self.edge_budget, self.num_subg
-            )
-        )
-        return graph_fn, norm_fn
 
     # TODO: only sample half edges, then add another half edges
     # TODO: use numpy to implement cython sampling method
@@ -370,47 +335,34 @@ class SAINTRandomWalkSampler(SAINTSampler):
             node_budget=num_roots * length, **kwargs
         )
 
-    def __generate_fn__(self):
-        graph_fn = os.path.join(
-            "./subgraphs/{}_RW_{}_{}_{}.npy".format(
-                self.dn, self.num_roots, self.length, self.num_subg
-            )
-        )
-        norm_fn = os.path.join(
-            "./subgraphs/{}_RW_{}_{}_{}_norm.npy".format(
-                self.dn, self.num_roots, self.length, self.num_subg
-            )
-        )
-        return graph_fn, norm_fn
-
     def __sample__(self):
         # GraphSAINT-NRW Probability Calculation
         # if self.prob is None:
         #     self.prob = self.train_g.in_degrees().float().clamp(min=1)
 
         # GraphSAINT-ERW Probability Calculation
-        # if self.prob is None:
-        #     src, dst = self.train_g.edges()
-        #     src_degrees, dst_degrees = self.train_g.in_degrees(
-        #         src
-        #     ).float().clamp(min=1), self.train_g.in_degrees(dst).float().clamp(
-        #         min=1
-        #     )
-        #     prob_mat = 1.0 / src_degrees + 1.0 / dst_degrees
-        #     prob_mat = scipy.sparse.csr_matrix(
-        #         (prob_mat.numpy(), (src.numpy(), dst.numpy()))
-        #     )
-        #     # The edge probability here only contains that of edges in upper triangle adjacency matrix
-        #     # Because we assume the graph is undirected, that is, the adjacency matrix is symmetric. We only need
-        #     # to consider half of edges in the graph.
-        #     self.prob = th.tensor(scipy.sparse.triu(prob_mat).data)
-        #     self.prob /= self.prob.sum()
+        if self.prob is None:
+            src, dst = self.train_g.edges()
+            src_degrees, dst_degrees = self.train_g.in_degrees(
+                src
+            ).float().clamp(min=1), self.train_g.in_degrees(dst).float().clamp(
+                min=1
+            )
+            prob_mat = 1.0 / src_degrees + 1.0 / dst_degrees
+            prob_mat = scipy.sparse.csr_matrix(
+                (prob_mat.numpy(), (src.numpy(), dst.numpy()))
+            )
+            # The edge probability here only contains that of edges in upper triangle adjacency matrix
+            # Because we assume the graph is undirected, that is, the adjacency matrix is symmetric. We only need
+            # to consider half of edges in the graph.
+            self.prob = th.tensor(scipy.sparse.triu(prob_mat).data)
+            self.prob /= self.prob.sum()
 
         sampled_roots = th.randint(
             0, self.train_g.num_nodes(), (self.num_roots,)
         )
         traces, types = random_walk(
-            self.train_g, nodes=sampled_roots, length=self.length
+            self.train_g, nodes=sampled_roots, length=self.length, prob=self.prob
         )
         sampled_nodes, _, _, _ = pack_traces(traces, types)
         sampled_nodes = sampled_nodes.unique()

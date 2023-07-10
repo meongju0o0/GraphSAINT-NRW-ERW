@@ -9,7 +9,7 @@ from config import CONFIG
 from modules import GCNNet
 from sampler import SAINTEdgeSampler, SAINTNodeSampler, SAINTRandomWalkSampler
 from torch.utils.data import DataLoader
-from utils import calc_f1, evaluate, load_data, Logger, save_log_dir
+from utils import calc_f1, evaluate, load_data
 
 
 def main(args, task):
@@ -122,11 +122,6 @@ def main(args, task):
     if cuda:
         model.cuda()
 
-    # logger and so on
-    log_dir = save_log_dir(args)
-    logger = Logger(os.path.join(log_dir, "loggings"))
-    logger.write(args)
-
     # use optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -201,10 +196,6 @@ def main(args, task):
             if val_f1_mic > best_f1:
                 best_f1 = val_f1_mic
                 print("new best val f1:", best_f1)
-                torch.save(
-                    model.state_dict(),
-                    os.path.join(log_dir, "best_model_{}.pkl".format(task)),
-                )
             if cpu_flag and cuda:
                 model.cuda()
 
@@ -212,10 +203,6 @@ def main(args, task):
     print(f"training using time {end_time - start_time}")
 
     # test
-    if args.use_val:
-        model.load_state_dict(
-            torch.load(os.path.join(log_dir, "best_model_{}.pkl".format(task)))
-        )
     if cpu_flag and cuda:
         model = model.to("cpu")
     test_f1_mic, test_f1_mac = evaluate(model, g, labels, test_mask, multilabel)
@@ -239,7 +226,7 @@ if __name__ == "__main__":
         action="store_true",
         help="sampling method in training phase",
     )
-    parser.add_argument("--gpu", type=int, default=0, help="the gpu index")
+    parser.add_argument("--gpu", type=int, default=-1, help="the gpu index")
     task = parser.parse_args().task
     args = argparse.Namespace(**CONFIG[task])
     args.online = parser.parse_args().online

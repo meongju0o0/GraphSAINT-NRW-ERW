@@ -11,32 +11,6 @@ from sklearn.metrics import f1_score
 from sklearn.preprocessing import StandardScaler
 
 
-class Logger(object):
-    """A custom logger to log stdout to a logging file."""
-
-    def __init__(self, path):
-        """Initialize the logger.
-
-        Parameters
-        ---------
-        path : str
-            The file path to be stored in.
-        """
-        self.path = path
-
-    def write(self, s):
-        with open(self.path, "a") as f:
-            f.write(str(s))
-        print(s)
-        return
-
-
-def save_log_dir(args):
-    log_dir = "./log/{}/{}".format(args.dataset, args.log_dir)
-    os.makedirs(log_dir, exist_ok=True)
-    return log_dir
-
-
 def calc_f1(y_true, y_pred, multilabel):
     if multilabel:
         y_pred[y_pred > 0] = 1
@@ -70,14 +44,14 @@ def load_data(args, multilabel):
     DataType = namedtuple("Dataset", ["num_classes", "train_nid", "g"])
 
     adj_full = scipy.sparse.load_npz("./{}/adj_full.npz".format(prefix)).astype(
-        np.bool
+        np.bool_
     )
     g = dgl.from_scipy(adj_full)
     num_nodes = g.num_nodes()
 
     adj_train = scipy.sparse.load_npz(
         "./{}/adj_train.npz".format(prefix)
-    ).astype(np.bool)
+    ).astype(np.bool_)
     train_nid = np.array(list(set(adj_train.nonzero()[0])))
 
     role = json.load(open("./{}/role.json".format(prefix)))
