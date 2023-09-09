@@ -12,7 +12,7 @@
 
 - Python 3.10.12
 - PyTorch 2.0.1
-- NumPy 1.25.0s
+- NumPy 1.25.0
 - Scikit-learn 1.2.2
 - DGL 1.1.1
 
