@@ -1,7 +1,7 @@
 # GraphSAINT-NRW, ERW
 - Juyeong Shin, Young-Koo Lee
 - KSC 2022 Paper
-- link: https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE11224420
+- Paper link: https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE11224420
 
 - Modified from DGL GraphSAINT example
     - Paper link: [https://arxiv.org/abs/1907.04931](https://arxiv.org/abs/1907.04931)
