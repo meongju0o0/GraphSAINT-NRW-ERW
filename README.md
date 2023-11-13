@@ -55,4 +55,4 @@ python train_sampling.py --task $task $online
 - If `$online` is `--online`,  we sample subgraphs on-the-fly in the training phase, while discarding pre-sampled subgraphs. If `$online` is empty, we utilize pre-sampled subgraphs in the training phase.
 
 ### LICENSE
-© 2023 meongju0o0 uses Apache 2.0 License. Powered by DGL Team.
+© 2022 meongju0o0 uses Apache 2.0 License. Powered by DGL Team.
